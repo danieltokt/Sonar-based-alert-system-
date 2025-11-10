@@ -1,9 +1,10 @@
-// lib/main.dart
+// lib/main.dart - FINAL VERSION
 
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'models/user_model.dart';
 import 'models/device_model.dart';
+import 'models/permission_log.dart';
 import 'services/connection_service.dart';
 import 'widgets/sensor_card.dart';
 import 'widgets/camera_widget.dart';
@@ -25,8 +26,83 @@ class SmartHomeApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: Color(0xFF121212),
       ),
-      home: LoginScreen(),
+      home: SplashScreen(),
       debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+// ==================== SPLASH SCREEN ====================
+class SplashScreen extends StatefulWidget {
+  @override
+  _SplashScreenState createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: 2),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
+    
+    _controller.forward();
+    
+    Timer(Duration(seconds: 3), () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginScreen()),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1a237e), Color(0xFF0d47a1)],
+          ),
+        ),
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.security, size: 120, color: Colors.white),
+                SizedBox(height: 24),
+                Text(
+                  'Smart Home Security',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 40),
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -37,11 +113,31 @@ class LoginScreen extends StatefulWidget {
   _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _errorMessage = '';
   bool _isLoading = false;
+  late AnimationController _shakeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 500),
+    );
+  }
+
+  @override
+  void dispose() {
+    _shakeController.dispose();
+    super.dispose();
+  }
+
+  void _shake() {
+    _shakeController.forward().then((_) => _shakeController.reverse());
+  }
 
   void _login() async {
     setState(() {
@@ -49,7 +145,6 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = '';
     });
 
-    // Имитация задержки сети
     await Future.delayed(Duration(milliseconds: 500));
 
     String username = _usernameController.text.trim();
@@ -58,7 +153,6 @@ class _LoginScreenState extends State<LoginScreen> {
     UserModel? user = AuthService.login(username, password);
 
     if (user != null) {
-      // Успешный вход - переход на соответствующий экран
       Widget screen;
       
       switch (user.role) {
@@ -74,9 +168,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => screen),
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => screen,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
       );
     } else {
+      _shake();
       setState(() {
         _errorMessage = 'Неверный логин или пароль';
         _isLoading = false;
@@ -98,99 +198,106 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.security,
-                  size: 100,
-                  color: Colors.white,
-                ),
-                SizedBox(height: 20),
-                Text(
-                  'Smart Home Security',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+            child: AnimatedBuilder(
+              animation: _shakeController,
+              builder: (context, child) {
+                final offset = 10 * _shakeController.value * (1 - _shakeController.value);
+                return Transform.translate(
+                  offset: Offset(offset, 0),
+                  child: child,
+                );
+              },
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Hero(
+                    tag: 'app_icon',
+                    child: Icon(Icons.security, size: 100, color: Colors.white),
                   ),
-                ),
-                SizedBox(height: 50),
-                
-                // Username field
-                TextField(
-                  controller: _usernameController,
-                  decoration: InputDecoration(
-                    labelText: 'Username',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    prefixIcon: Icon(Icons.person),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                  ),
-                  style: TextStyle(color: Colors.white),
-                ),
-                SizedBox(height: 20),
-                
-                // Password field
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    prefixIcon: Icon(Icons.lock),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                  ),
-                  style: TextStyle(color: Colors.white),
-                  onSubmitted: (_) => _login(),
-                ),
-                SizedBox(height: 10),
-                
-                // Error message
-                if (_errorMessage.isNotEmpty)
-                  Container(
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _errorMessage,
-                      style: TextStyle(color: Colors.red[300]),
+                  SizedBox(height: 20),
+                  Text(
+                    'Smart Home Security',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                SizedBox(height: 20),
-                
-                // Login button
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _login,
-                  child: _isLoading
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  SizedBox(height: 50),
+                  
+                  TextField(
+                    controller: _usernameController,
+                    decoration: InputDecoration(
+                      labelText: 'Username',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      prefixIcon: Icon(Icons.person),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.1),
+                    ),
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  SizedBox(height: 20),
+                  
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      prefixIcon: Icon(Icons.lock),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.1),
+                    ),
+                    style: TextStyle(color: Colors.white),
+                    onSubmitted: (_) => _login(),
+                  ),
+                  SizedBox(height: 10),
+                  
+                  if (_errorMessage.isNotEmpty)
+                    Container(
+                      padding: EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[300], size: 20),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage,
+                              style: TextStyle(color: Colors.red[300]),
+                            ),
                           ),
-                        )
-                      : Text(
-                          'ВОЙТИ',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(horizontal: 60, vertical: 18),
-                    backgroundColor: Colors.blue[600],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                        ],
+                      ),
+                    ),
+                  SizedBox(height: 20),
+                  
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    child: _isLoading
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            'ВОЙТИ',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 60, vertical: 18),
+                      backgroundColor: Colors.blue[600],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -275,10 +382,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 20),
-                  Text(
-                    'Подключение к Arduino...',
-                    style: TextStyle(fontSize: 16),
-                  ),
+                  Text('Подключение к Arduino...', style: TextStyle(fontSize: 16)),
                 ],
               ),
             )
@@ -293,15 +397,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Статус подключения
                     ConnectionStatusWidget(),
                     SizedBox(height: 20),
-
-                    // Статистика устройств
                     _buildDeviceStats(),
                     SizedBox(height: 20),
 
-                    // Сенсоры
                     if (widget.user.hasPermission('sensors')) ...[
                       _buildSectionTitle('📡 Сенсоры'),
                       SizedBox(height: 12),
@@ -310,49 +410,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: EdgeInsets.only(bottom: 16),
                           child: SensorCard(
                             sensor: sensor,
-                            onToggle: (value) {
-                              setState(() {});
-                            },
+                            onToggle: (value) => setState(() {}),
                           ),
                         );
                       }).toList(),
                     ],
 
-                    // Камера
                     if (widget.user.hasPermission('camera')) ...[
                       _buildSectionTitle('📹 Камера'),
                       SizedBox(height: 12),
                       CameraWidget(
                         camera: DeviceService.camera,
-                        onRecordingToggle: (isRecording) {
-                          setState(() {});
-                        },
+                        onRecordingToggle: (isRecording) => setState(() {}),
                       ),
                       SizedBox(height: 20),
                     ],
 
-                    // LED
                     if (widget.user.hasPermission('leds')) ...[
                       _buildSectionTitle('💡 Светодиоды'),
                       SizedBox(height: 12),
                       LEDControl(
                         leds: DeviceService.leds,
-                        onToggle: (id, value) {
-                          setState(() {});
-                        },
+                        onToggle: (id, value) => setState(() {}),
                       ),
                       SizedBox(height: 20),
                     ],
 
-                    // Баззеры
                     if (widget.user.hasPermission('buzzers')) ...[
                       _buildSectionTitle('🔊 Звуковая сигнализация'),
                       SizedBox(height: 12),
                       BuzzerControl(
                         buzzers: DeviceService.buzzers,
-                        onToggle: (id, value) {
-                          setState(() {});
-                        },
+                        onToggle: (id, value) => setState(() {}),
                       ),
                     ],
 
@@ -367,11 +456,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
-      ),
+      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
     );
   }
 
@@ -381,9 +466,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue[900]!, Colors.blue[700]!],
-        ),
+        gradient: LinearGradient(colors: [Colors.blue[900]!, Colors.blue[700]!]),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -402,21 +485,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Icon(icon, color: Colors.white, size: 28),
         SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white70,
-          ),
-        ),
+        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.white70)),
       ],
     );
   }
@@ -428,8 +498,21 @@ class AdminScreen extends StatefulWidget {
   _AdminScreenState createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> {
+class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   List<UserModel> users = AuthService.getAllUsers();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   void _logout() {
     AuthService.logout();
@@ -443,16 +526,15 @@ class _AdminScreenState extends State<AdminScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[850],
         title: Row(
           children: [
-            Icon(Icons.warning, color: Colors.red),
+            Icon(Icons.warning, color: Colors.red, size: 30),
             SizedBox(width: 10),
             Text('Emergency Stop'),
           ],
         ),
-        content: Text(
-          'Вы уверены? Это отключит все устройства кроме камеры!',
-        ),
+        content: Text('Вы уверены? Это отключит все устройства кроме камеры!\n\nКамера продолжит работать для безопасности.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -465,7 +547,7 @@ class _AdminScreenState extends State<AdminScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('🚨 Emergency Stop активирован!'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: Colors.red[700],
                 ),
               );
               setState(() {});
@@ -484,197 +566,168 @@ class _AdminScreenState extends State<AdminScreen> {
       appBar: AppBar(
         title: Text('Admin Panel'),
         backgroundColor: Colors.red[700],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(icon: Icon(Icons.dashboard), text: 'Обзор'),
+            Tab(icon: Icon(Icons.people), text: 'Пользователи'),
+            Tab(icon: Icon(Icons.history), text: 'История'),
+          ],
+        ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Выход',
+          IconButton(icon: Icon(Icons.logout), onPressed: _logout),
+        ],
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildOverviewTab(),
+          _buildUsersTab(),
+          _buildHistoryTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewTab() {
+    var stats = DeviceService.getDeviceStats();
+    int todayChanges = PermissionLogService.getTodayChangesCount();
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [Colors.red[900]!, Colors.red[700]!]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.warning_amber, size: 60, color: Colors.white),
+                SizedBox(height: 12),
+                Text('Emergency Controls', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _emergencyStop,
+                        icon: Icon(Icons.power_settings_new),
+                        label: Text('STOP'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: EdgeInsets.symmetric(vertical: 16)),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          DeviceService.enableAll();
+                          setState(() {});
+                        },
+                        icon: Icon(Icons.power),
+                        label: Text('ENABLE'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 16)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 24),
+          GridView.count(
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            children: [
+              _buildStatCard('Всего', '${stats['total']}', Icons.devices, Colors.blue),
+              _buildStatCard('Онлайн', '${stats['online']}', Icons.wifi, Colors.green),
+              _buildStatCard('Активных', '${stats['enabled']}', Icons.power, Colors.orange),
+              _buildStatCard('Изменений', '$todayChanges', Icons.edit, Colors.purple),
+            ],
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Emergency Stop
-            Container(
-              padding: EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.red[900],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red, width: 2),
-              ),
-              child: Column(
-                children: [
-                  Icon(Icons.warning_amber, size: 50, color: Colors.red),
-                  SizedBox(height: 12),
-                  Text(
-                    'Emergency Controls',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _emergencyStop,
-                          icon: Icon(Icons.power_off),
-                          label: Text('EMERGENCY STOP'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            DeviceService.enableAll();
-                            setState(() {});
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('✅ Все устройства включены'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          },
-                          icon: Icon(Icons.power),
-                          label: Text('ENABLE ALL'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 30),
+    );
+  }
 
-            // Управление правами пользователей
-            Text(
-              'Управление правами пользователей',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 16),
-
-            // Список пользователей
-            ...users.map((user) => _buildUserCard(user)).toList(),
-          ],
-        ),
+  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.5)),
       ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 36),
+          SizedBox(height: 12),
+          Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsersTab() {
+    return ListView(
+      padding: EdgeInsets.all(16),
+      children: users.map((user) => _buildUserCard(user)).toList(),
     );
   }
 
   Widget _buildUserCard(UserModel user) {
-    String roleName = '';
-    switch (user.role) {
-      case UserRole.userA:
-        roleName = 'User A - Полный доступ';
-        break;
-      case UserRole.userB:
-        roleName = 'User B - Сенсоры';
-        break;
-      case UserRole.userC:
-        roleName = 'User C - Камера и Звук';
-        break;
-      default:
-        roleName = 'User';
-    }
-
     return Card(
       margin: EdgeInsets.only(bottom: 16),
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: Colors.grey[850],
       child: Padding(
         padding: EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Text(
-                    user.username[0].toUpperCase(),
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                ),
+                CircleAvatar(child: Text(user.username[0].toUpperCase()), backgroundColor: Colors.blue),
                 SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user.username,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        roleName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[400],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                Text(user.username, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
-            SizedBox(height: 16),
-            Divider(color: Colors.grey[700]),
-            SizedBox(height: 12),
-            Text(
-              'Права доступа:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[300],
-              ),
+            Divider(),
+            CheckboxListTile(
+              title: Text('📡 Сенсоры'),
+              value: user.hasPermission('sensors'),
+              onChanged: (v) {
+                setState(() => user.updatePermission('sensors', v!));
+                PermissionLogService.addLog(user.username, 'sensors', v!);
+              },
             ),
-            SizedBox(height: 12),
-
-            // Чекбоксы прав
-            _buildPermissionCheckbox(
-              user,
-              'sensors',
-              '📡 Сенсоры',
-              Colors.green,
+            CheckboxListTile(
+              title: Text('📹 Камера'),
+              value: user.hasPermission('camera'),
+              onChanged: (v) {
+                setState(() => user.updatePermission('camera', v!));
+                PermissionLogService.addLog(user.username, 'camera', v!);
+              },
             ),
-            _buildPermissionCheckbox(
-              user,
-              'camera',
-              '📹 Камера',
-              Colors.blue,
+            CheckboxListTile(
+              title: Text('💡 LED'),
+              value: user.hasPermission('leds'),
+              onChanged: (v) {
+                setState(() => user.updatePermission('leds', v!));
+                PermissionLogService.addLog(user.username, 'leds', v!);
+              },
             ),
-            _buildPermissionCheckbox(
-              user,
-              'leds',
-              '💡 Светодиоды',
-              Colors.orange,
-            ),
-            _buildPermissionCheckbox(
-              user,
-              'buzzers',
-              '🔊 Баззеры',
-              Colors.purple,
+            CheckboxListTile(
+              title: Text('🔊 Баззеры'),
+              value: user.hasPermission('buzzers'),
+              onChanged: (v) {
+                setState(() => user.updatePermission('buzzers', v!));
+                PermissionLogService.addLog(user.username, 'buzzers', v!);
+              },
             ),
           ],
         ),
@@ -682,36 +735,24 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  Widget _buildPermissionCheckbox(
-    UserModel user,
-    String permission,
-    String label,
-    Color color,
-  ) {
-    return CheckboxListTile(
-      title: Text(
-        label,
-        style: TextStyle(color: Colors.white),
-      ),
-      value: user.hasPermission(permission),
-      onChanged: (value) {
-        setState(() {
-          user.updatePermission(permission, value ?? false);
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              value == true
-                  ? '✅ Доступ к $label предоставлен для ${user.username}'
-                  : '❌ Доступ к $label отозван для ${user.username}',
-            ),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      },
-      activeColor: color,
-      contentPadding: EdgeInsets.zero,
-    );
+  Widget _buildHistoryTab() {
+    List<PermissionLog> logs = PermissionLogService.logs;
+    return logs.isEmpty
+        ? Center(child: Text('История пуста'))
+        : ListView.builder(
+            padding: EdgeInsets.all(16),
+            itemCount: logs.length,
+            itemBuilder: (c, i) {
+              var log = logs[i];
+              return Card(
+                child: ListTile(
+                  leading: Icon(log.granted ? Icons.check : Icons.close, color: log.granted ? Colors.green : Colors.red),
+                  title: Text('${log.username} - ${log.getDeviceName()}'),
+                  subtitle: Text('Доступ ${log.getActionText()}'),
+                  trailing: Text(log.getFormattedTime(), style: TextStyle(fontSize: 11)),
+                ),
+              );
+            },
+          );
   }
 }
