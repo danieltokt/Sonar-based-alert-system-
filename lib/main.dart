@@ -1,7 +1,15 @@
 // lib/main.dart
 
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'models/user_model.dart';
+import 'models/device_model.dart';
+import 'services/connection_service.dart';
+import 'widgets/sensor_card.dart';
+import 'widgets/camera_widget.dart';
+import 'widgets/led_control.dart';
+import 'widgets/buzzer_control.dart';
+import 'widgets/connection_status.dart';
 
 void main() {
   runApp(SmartHomeApp());
@@ -33,8 +41,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _errorMessage = '';
+  bool _isLoading = false;
 
-  void _login() {
+  void _login() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    // Имитация задержки сети
+    await Future.delayed(Duration(milliseconds: 500));
+
     String username = _usernameController.text.trim();
     String password = _passwordController.text.trim();
 
@@ -62,6 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       setState(() {
         _errorMessage = 'Неверный логин или пароль';
+        _isLoading = false;
       });
     }
   }
@@ -150,11 +168,20 @@ class _LoginScreenState extends State<LoginScreen> {
                 
                 // Login button
                 ElevatedButton(
-                  onPressed: _login,
-                  child: Text(
-                    'ВОЙТИ',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                  onPressed: _isLoading ? null : _login,
+                  child: _isLoading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          'ВОЙТИ',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(horizontal: 60, vertical: 18),
                     backgroundColor: Colors.blue[600],
@@ -172,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ==================== DASHBOARD SCREEN (для всех юзеров) ====================
+// ==================== DASHBOARD SCREEN ====================
 class DashboardScreen extends StatefulWidget {
   final UserModel user;
 
@@ -183,6 +210,28 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  bool _isConnecting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoConnect();
+  }
+
+  Future<void> _autoConnect() async {
+    setState(() {
+      _isConnecting = true;
+    });
+
+    await ConnectionService.connect();
+
+    if (mounted) {
+      setState(() {
+        _isConnecting = false;
+      });
+    }
+  }
+
   String _getRoleTitle() {
     switch (widget.user.role) {
       case UserRole.userA:
@@ -197,6 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _logout() {
+    ConnectionService.disconnect();
     AuthService.logout();
     Navigator.pushReplacement(
       context,
@@ -218,69 +268,213 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Здесь будем добавлять устройства в следующих шагах
-            Text(
-              'Доступные устройства:',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      body: _isConnecting
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text(
+                    'Подключение к Arduino...',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                await ConnectionService.reconnect();
+                setState(() {});
+              },
+              child: SingleChildScrollView(
+                physics: AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Статус подключения
+                    ConnectionStatusWidget(),
+                    SizedBox(height: 20),
+
+                    // Статистика устройств
+                    _buildDeviceStats(),
+                    SizedBox(height: 20),
+
+                    // Сенсоры
+                    if (widget.user.hasPermission('sensors')) ...[
+                      _buildSectionTitle('📡 Сенсоры'),
+                      SizedBox(height: 12),
+                      ...DeviceService.sensors.map((sensor) {
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 16),
+                          child: SensorCard(
+                            sensor: sensor,
+                            onToggle: (value) {
+                              setState(() {});
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ],
+
+                    // Камера
+                    if (widget.user.hasPermission('camera')) ...[
+                      _buildSectionTitle('📹 Камера'),
+                      SizedBox(height: 12),
+                      CameraWidget(
+                        camera: DeviceService.camera,
+                        onRecordingToggle: (isRecording) {
+                          setState(() {});
+                        },
+                      ),
+                      SizedBox(height: 20),
+                    ],
+
+                    // LED
+                    if (widget.user.hasPermission('leds')) ...[
+                      _buildSectionTitle('💡 Светодиоды'),
+                      SizedBox(height: 12),
+                      LEDControl(
+                        leds: DeviceService.leds,
+                        onToggle: (id, value) {
+                          setState(() {});
+                        },
+                      ),
+                      SizedBox(height: 20),
+                    ],
+
+                    // Баззеры
+                    if (widget.user.hasPermission('buzzers')) ...[
+                      _buildSectionTitle('🔊 Звуковая сигнализация'),
+                      SizedBox(height: 12),
+                      BuzzerControl(
+                        buzzers: DeviceService.buzzers,
+                        onToggle: (id, value) {
+                          setState(() {});
+                        },
+                      ),
+                    ],
+
+                    SizedBox(height: 40),
+                  ],
+                ),
+              ),
             ),
-            SizedBox(height: 20),
-            
-            // Показываем устройства в зависимости от прав
-            if (widget.user.hasPermission('sensors'))
-              _buildPlaceholder('📡 Сенсоры', Colors.green),
-            
-            if (widget.user.hasPermission('camera'))
-              _buildPlaceholder('📹 Камера', Colors.blue),
-            
-            if (widget.user.hasPermission('leds'))
-              _buildPlaceholder('💡 Светодиоды', Colors.orange),
-            
-            if (widget.user.hasPermission('buzzers'))
-              _buildPlaceholder('🔊 Баззеры', Colors.purple),
-          ],
-        ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
       ),
     );
   }
 
-  Widget _buildPlaceholder(String title, Color color) {
+  Widget _buildDeviceStats() {
+    var stats = DeviceService.getDeviceStats();
+    
     return Container(
-      margin: EdgeInsets.only(bottom: 16),
-      padding: EdgeInsets.all(20),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        border: Border.all(color: color, width: 2),
+        gradient: LinearGradient(
+          colors: [Colors.blue[900]!, Colors.blue[700]!],
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Text(
-            title,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          Spacer(),
-          Text(
-            'Скоро здесь будет управление',
-            style: TextStyle(color: Colors.grey[400], fontSize: 12),
-          ),
+          _buildStatItem('Всего', '${stats['total']}', Icons.devices),
+          _buildStatItem('Онлайн', '${stats['online']}', Icons.wifi),
+          _buildStatItem('Активно', '${stats['enabled']}', Icons.power),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white, size: 28),
+        SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white70,
+          ),
+        ),
+      ],
     );
   }
 }
 
 // ==================== ADMIN SCREEN ====================
-class AdminScreen extends StatelessWidget {
-  void _logout(BuildContext context) {
+class AdminScreen extends StatefulWidget {
+  @override
+  _AdminScreenState createState() => _AdminScreenState();
+}
+
+class _AdminScreenState extends State<AdminScreen> {
+  List<UserModel> users = AuthService.getAllUsers();
+
+  void _logout() {
     AuthService.logout();
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => LoginScreen()),
+    );
+  }
+
+  void _emergencyStop() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Emergency Stop'),
+          ],
+        ),
+        content: Text(
+          'Вы уверены? Это отключит все устройства кроме камеры!',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              DeviceService.emergencyStop();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('🚨 Emergency Stop активирован!'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              setState(() {});
+            },
+            child: Text('Подтвердить'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          ),
+        ],
+      ),
     );
   }
 
@@ -293,30 +487,231 @@ class AdminScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: Icon(Icons.logout),
-            onPressed: () => _logout(context),
+            onPressed: _logout,
             tooltip: 'Выход',
           ),
         ],
       ),
-      body: Center(
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.admin_panel_settings, size: 100, color: Colors.red[400]),
-            SizedBox(height: 20),
-            Text(
-              'Панель администратора',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            // Emergency Stop
+            Container(
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red[900],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red, width: 2),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.warning_amber, size: 50, color: Colors.red),
+                  SizedBox(height: 12),
+                  Text(
+                    'Emergency Controls',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _emergencyStop,
+                          icon: Icon(Icons.power_off),
+                          label: Text('EMERGENCY STOP'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            DeviceService.enableAll();
+                            setState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('✅ Все устройства включены'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          },
+                          icon: Icon(Icons.power),
+                          label: Text('ENABLE ALL'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            SizedBox(height: 10),
+            SizedBox(height: 30),
+
+            // Управление правами пользователей
             Text(
-              'Управление правами пользователей\nбудет добавлено в следующих шагах',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[400]),
+              'Управление правами пользователей',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(height: 16),
+
+            // Список пользователей
+            ...users.map((user) => _buildUserCard(user)).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserCard(UserModel user) {
+    String roleName = '';
+    switch (user.role) {
+      case UserRole.userA:
+        roleName = 'User A - Полный доступ';
+        break;
+      case UserRole.userB:
+        roleName = 'User B - Сенсоры';
+        break;
+      case UserRole.userC:
+        roleName = 'User C - Камера и Звук';
+        break;
+      default:
+        roleName = 'User';
+    }
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 16),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Colors.grey[850],
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Text(
+                    user.username[0].toUpperCase(),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.username,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        roleName,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Divider(color: Colors.grey[700]),
+            SizedBox(height: 12),
+            Text(
+              'Права доступа:',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[300],
+              ),
+            ),
+            SizedBox(height: 12),
+
+            // Чекбоксы прав
+            _buildPermissionCheckbox(
+              user,
+              'sensors',
+              '📡 Сенсоры',
+              Colors.green,
+            ),
+            _buildPermissionCheckbox(
+              user,
+              'camera',
+              '📹 Камера',
+              Colors.blue,
+            ),
+            _buildPermissionCheckbox(
+              user,
+              'leds',
+              '💡 Светодиоды',
+              Colors.orange,
+            ),
+            _buildPermissionCheckbox(
+              user,
+              'buzzers',
+              '🔊 Баззеры',
+              Colors.purple,
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPermissionCheckbox(
+    UserModel user,
+    String permission,
+    String label,
+    Color color,
+  ) {
+    return CheckboxListTile(
+      title: Text(
+        label,
+        style: TextStyle(color: Colors.white),
+      ),
+      value: user.hasPermission(permission),
+      onChanged: (value) {
+        setState(() {
+          user.updatePermission(permission, value ?? false);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value == true
+                  ? '✅ Доступ к $label предоставлен для ${user.username}'
+                  : '❌ Доступ к $label отозван для ${user.username}',
+            ),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      },
+      activeColor: color,
+      contentPadding: EdgeInsets.zero,
     );
   }
 }
