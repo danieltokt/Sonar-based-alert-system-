@@ -1,4 +1,4 @@
-// lib/main.dart - FINAL VERSION
+// lib/main.dart - FINAL VERSION WITH SECRET ADMIN LOGIN
 
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -119,6 +119,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   String _errorMessage = '';
   bool _isLoading = false;
   late AnimationController _shakeController;
+  
+  // Для секретного входа админа
+  int _logoTapCount = 0;
+  Timer? _resetTimer;
 
   @override
   void initState() {
@@ -132,11 +136,58 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void dispose() {
     _shakeController.dispose();
+    _resetTimer?.cancel();
     super.dispose();
   }
 
   void _shake() {
     _shakeController.forward().then((_) => _shakeController.reverse());
+  }
+
+  // Секретный вход админа - нажать 5 раз на логотип
+  void _onLogoTap() {
+    setState(() {
+      _logoTapCount++;
+    });
+
+    // Сброс счетчика через 3 секунды
+    _resetTimer?.cancel();
+    _resetTimer = Timer(Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _logoTapCount = 0;
+        });
+      }
+    });
+
+    // Показываем подсказку при 3 нажатиях
+    if (_logoTapCount == 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🤫 Еще 2 нажатия...', textAlign: TextAlign.center),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.blue.withOpacity(0.7),
+        ),
+      );
+    }
+
+    // Вход в админку при 5 нажатиях
+    if (_logoTapCount >= 5) {
+      _openAdminLogin();
+    }
+  }
+
+  void _openAdminLogin() {
+    showDialog(
+      context: context,
+      builder: (context) => AdminLoginDialog(),
+    );
+    
+    // Сброс счетчика
+    setState(() {
+      _logoTapCount = 0;
+    });
+    _resetTimer?.cancel();
   }
 
   void _login() async {
@@ -150,26 +201,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     String username = _usernameController.text.trim();
     String password = _passwordController.text.trim();
 
+    // Запрещаем вход через обычную форму для админа
+    if (username.toLowerCase() == 'admin') {
+      _shake();
+      setState(() {
+        _errorMessage = 'Используйте секретный вход для администратора';
+        _isLoading = false;
+      });
+      return;
+    }
+
     UserModel? user = AuthService.login(username, password);
 
-    if (user != null) {
-      Widget screen;
-      
-      switch (user.role) {
-        case UserRole.userA:
-        case UserRole.userB:
-        case UserRole.userC:
-          screen = DashboardScreen(user: user);
-          break;
-        case UserRole.admin:
-          screen = AdminScreen();
-          break;
-      }
-
+    if (user != null && user.role != UserRole.admin) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => screen,
+          pageBuilder: (context, animation, secondaryAnimation) => DashboardScreen(user: user),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -210,9 +258,43 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Hero(
-                    tag: 'app_icon',
-                    child: Icon(Icons.security, size: 100, color: Colors.white),
+                  // Логотип с секретным входом
+                  GestureDetector(
+                    onTap: _onLogoTap,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Hero(
+                          tag: 'app_icon',
+                          child: Icon(
+                            Icons.security,
+                            size: 100,
+                            color: Colors.white,
+                          ),
+                        ),
+                        // Индикатор нажатий (скрытый до первого нажатия)
+                        if (_logoTapCount > 0)
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              padding: EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '$_logoTapCount',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   SizedBox(height: 20),
                   Text(
@@ -296,10 +378,204 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                     ),
                   ),
+                  
+                  // Подсказка (скрытая)
+                  SizedBox(height: 40),
+                  Opacity(
+                    opacity: 0.3,
+                    child: Text(
+                      '💡 Подсказка: нажмите на логотип',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== ДИАЛОГ ВХОДА АДМИНА ====================
+class AdminLoginDialog extends StatefulWidget {
+  @override
+  _AdminLoginDialogState createState() => _AdminLoginDialogState();
+}
+
+class _AdminLoginDialogState extends State<AdminLoginDialog> {
+  final TextEditingController _passwordController = TextEditingController();
+  String _errorMessage = '';
+  bool _isLoading = false;
+
+  void _adminLogin() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    await Future.delayed(Duration(milliseconds: 500));
+
+    String password = _passwordController.text.trim();
+
+    // Проверяем пароль админа
+    if (password == 'admin123') {
+      UserModel? admin = AuthService.login('admin', 'admin123');
+      
+      if (admin != null) {
+        Navigator.pop(context); // Закрываем диалог
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => AdminScreen(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+          ),
+        );
+      }
+    } else {
+      setState(() {
+        _errorMessage = 'Неверный пароль администратора';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.grey[900],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Заголовок
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.admin_panel_settings,
+                    color: Colors.red,
+                    size: 32,
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Admin Access',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        'Введите пароль администратора',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 24),
+
+            // Поле пароля
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Admin Password',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                prefixIcon: Icon(Icons.lock, color: Colors.red),
+                filled: true,
+                fillColor: Colors.grey[850],
+              ),
+              style: TextStyle(color: Colors.white),
+              onSubmitted: (_) => _adminLogin(),
+            ),
+            
+            // Ошибка
+            if (_errorMessage.isNotEmpty) ...[
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _errorMessage,
+                        style: TextStyle(color: Colors.red[300], fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            SizedBox(height: 24),
+
+            // Кнопки
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Отмена'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey[400],
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _adminLogin,
+                    child: _isLoading
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text('ВОЙТИ'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
