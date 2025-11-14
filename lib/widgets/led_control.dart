@@ -105,13 +105,13 @@ class _LEDControlState extends State<LEDControl> with TickerProviderStateMixin {
                 // Кнопка включить/выключить все
                 ElevatedButton(
                   onPressed: () => _toggleAll(enabledCount < widget.leds.length),
-                  child: Text(
-                    enabledCount < widget.leds.length ? 'All ON' : 'All OFF',
-                    style: TextStyle(fontSize: 12),
-                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: Text(
+                    enabledCount < widget.leds.length ? 'All ON' : 'All OFF',
+                    style: TextStyle(fontSize: 12),
                   ),
                 ),
               ],

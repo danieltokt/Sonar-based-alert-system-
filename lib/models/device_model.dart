@@ -1,4 +1,4 @@
-// lib/models/device_model.dart
+// lib/models/device_model.dart - ОБНОВЛЕННАЯ ВЕРСИЯ
 
 import 'package:flutter/material.dart';
 
@@ -16,7 +16,6 @@ abstract class Device {
     this.status = DeviceStatus.online,
   });
 
-  // Метод для включения/выключения устройства
   void toggle() {
     isEnabled = !isEnabled;
   }
@@ -24,17 +23,18 @@ abstract class Device {
 
 // ==================== СТАТУСЫ УСТРОЙСТВ ====================
 enum DeviceStatus {
-  online,    // Устройство подключено и работает
-  offline,   // Устройство не подключено
-  error,     // Ошибка устройства
-  warning,   // Предупреждение
+  online,
+  offline,
+  error,
+  warning,
 }
 
 // ==================== СЕНСОР ====================
 class SensorDevice extends Device {
-  double distance; // Расстояние в сантиметрах
+  double distance;
   final double maxDistance;
   final double minDistance;
+  final double alarmThreshold; // Порог срабатывания тревоги
 
   SensorDevice({
     required String id,
@@ -42,6 +42,7 @@ class SensorDevice extends Device {
     required this.distance,
     this.maxDistance = 50.0,
     this.minDistance = 0.0,
+    this.alarmThreshold = 20.0, // По умолчанию 20см
     bool isEnabled = true,
   }) : super(
           id: id,
@@ -50,61 +51,81 @@ class SensorDevice extends Device {
           status: DeviceStatus.online,
         );
 
-  // Получить цвет индикатора в зависимости от расстояния
+  bool isAlarmTriggered() {
+    return isEnabled && distance < alarmThreshold;
+  }
+
   Color getIndicatorColor() {
     if (!isEnabled) return Colors.grey;
     
-    if (distance < 10) {
-      return Colors.red; // Очень близко - опасность
+    if (distance < alarmThreshold) {
+      return Colors.red; // ТРЕВОГА!
     } else if (distance < 30) {
-      return Colors.orange; // Близко - предупреждение
+      return Colors.orange; // Близко
     } else {
-      return Colors.green; // Далеко - нормально
+      return Colors.green; // Норма
     }
   }
 
-  // Получить статус в текстовом виде
   String getStatusText() {
     if (!isEnabled) return 'Выключен';
     
-    if (distance < 10) {
-      return 'ОПАСНОСТЬ';
+    if (distance < alarmThreshold) {
+      return '🚨 ТРЕВОГА';
     } else if (distance < 30) {
-      return 'ВНИМАНИЕ';
+      return 'Внимание';
     } else {
-      return 'НОРМА';
+      return 'Норма';
     }
   }
 }
 
-// ==================== КАМЕРА ====================
-class CameraDevice extends Device {
-  bool isRecording;
-  int angle; // Угол поворота сервомотора (0-180)
+// ==================== СЕРВО МОТОР (ДВЕРЬ) ====================
+class ServoDevice extends Device {
+  int angle; // Текущий угол (0-180)
+  bool isDoorClosed; // Дверь закрыта?
+  final int openAngle; // Угол открытой двери
+  final int closedAngle; // Угол закрытой двери
 
-  CameraDevice({
+  ServoDevice({
     required String id,
     required String name,
-    this.isRecording = false,
-    this.angle = 90,
+    this.angle = 0,
+    this.isDoorClosed = false,
+    this.openAngle = 0,
+    this.closedAngle = 90,
   }) : super(
           id: id,
           name: name,
-          isEnabled: true, // Камера ВСЕГДА включена
+          isEnabled: true, // Серво всегда готов к работе
           status: DeviceStatus.online,
         );
 
-  // Камера не может быть выключена
-  @override
-  void toggle() {
-    // Камера всегда включена, но можем переключать запись
-    isRecording = !isRecording;
+  // Закрыть дверь
+  void closeDoor() {
+    angle = closedAngle;
+    isDoorClosed = true;
   }
 
-  // Повернуть камеру
-  void rotateCamera(int newAngle) {
+  // Открыть дверь
+  void openDoor() {
+    angle = openAngle;
+    isDoorClosed = false;
+  }
+
+  // Установить произвольный угол
+  void setAngle(int newAngle) {
     if (newAngle >= 0 && newAngle <= 180) {
       angle = newAngle;
+      isDoorClosed = (angle == closedAngle);
+    }
+  }
+
+  String getDoorStatus() {
+    if (isDoorClosed) {
+      return '🔒 Закрыта';
+    } else {
+      return '🔓 Открыта';
     }
   }
 }
@@ -112,7 +133,7 @@ class CameraDevice extends Device {
 // ==================== СВЕТОДИОД ====================
 class LEDDevice extends Device {
   Color color;
-  int brightness; // 0-100
+  int brightness;
   bool isBlinking;
 
   LEDDevice({
@@ -129,14 +150,12 @@ class LEDDevice extends Device {
           status: DeviceStatus.online,
         );
 
-  // Изменить яркость
   void setBrightness(int value) {
     if (value >= 0 && value <= 100) {
       brightness = value;
     }
   }
 
-  // Включить/выключить мигание
   void toggleBlinking() {
     isBlinking = !isBlinking;
   }
@@ -144,7 +163,7 @@ class LEDDevice extends Device {
 
 // ==================== БАЗЗЕР ====================
 class BuzzerDevice extends Device {
-  int volume; // 0-100
+  int volume;
   BuzzerMode mode;
 
   BuzzerDevice({
@@ -160,44 +179,62 @@ class BuzzerDevice extends Device {
           status: DeviceStatus.online,
         );
 
-  // Изменить громкость
   void setVolume(int value) {
     if (value >= 0 && value <= 100) {
       volume = value;
     }
   }
 
-  // Изменить режим
   void setMode(BuzzerMode newMode) {
     mode = newMode;
   }
 }
 
 enum BuzzerMode {
-  continuous, // Постоянный звук
-  beep,       // Короткие сигналы
-  alarm,      // Сирена
+  continuous,
+  beep,
+  alarm,
 }
 
 // ==================== СЕРВИС УПРАВЛЕНИЯ УСТРОЙСТВАМИ ====================
 class DeviceService {
-  // Список всех устройств в системе
+  // ТРЕВОГА
+  static bool isAlarmActive = false;
+
+  // Список всех устройств
   static List<SensorDevice> sensors = [
-    SensorDevice(id: 's0', name: 'Sensor 0 - Entrance', distance: 15.0),
-    SensorDevice(id: 's1', name: 'Sensor 1 - Left Side', distance: 20.0),
-    SensorDevice(id: 's2', name: 'Sensor 2 - Right Side', distance: 10.0),
+    SensorDevice(
+      id: 's0',
+      name: 'Sensor 0 - Entrance',
+      distance: 15.0,
+      alarmThreshold: 20.0,
+    ),
+    SensorDevice(
+      id: 's1',
+      name: 'Sensor 1 - Left Side',
+      distance: 20.0,
+      alarmThreshold: 20.0,
+    ),
+    SensorDevice(
+      id: 's2',
+      name: 'Sensor 2 - Right Side',
+      distance: 10.0,
+      alarmThreshold: 20.0,
+    ),
   ];
 
-  static CameraDevice camera = CameraDevice(
-    id: 'cam1',
-    name: 'Main Camera',
+  static ServoDevice servo = ServoDevice(
+    id: 'servo1',
+    name: 'Door Servo',
+    openAngle: 0,
+    closedAngle: 90,
   );
 
   static List<LEDDevice> leds = [
     LEDDevice(id: 'led1', name: 'LED 1 - Front', color: Colors.red),
-    LEDDevice(id: 'led2', name: 'LED 2 - Left', color: Colors.blue),
-    LEDDevice(id: 'led3', name: 'LED 3 - Right', color: Colors.green),
-    LEDDevice(id: 'led4', name: 'LED 4 - Back', color: Colors.yellow),
+    LEDDevice(id: 'led2', name: 'LED 2 - Left', color: Colors.red),
+    LEDDevice(id: 'led3', name: 'LED 3 - Right', color: Colors.red),
+    LEDDevice(id: 'led4', name: 'LED 4 - Back', color: Colors.red),
   ];
 
   static List<BuzzerDevice> buzzers = [
@@ -206,17 +243,69 @@ class DeviceService {
     BuzzerDevice(id: 'buzz3', name: 'Buzzer 3'),
   ];
 
+  // Проверка, сработала ли тревога
+  static bool checkAlarmTrigger() {
+    for (var sensor in sensors) {
+      if (sensor.isAlarmTriggered()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // АКТИВАЦИЯ ТРЕВОГИ
+  static void activateAlarm() {
+    isAlarmActive = true;
+    
+    // Включаем все LED
+    for (var led in leds) {
+      led.isEnabled = true;
+      led.isBlinking = true;
+    }
+    
+    // Включаем все баззеры
+    for (var buzzer in buzzers) {
+      buzzer.isEnabled = true;
+    }
+    
+    // Закрываем дверь
+    servo.closeDoor();
+    
+    print('🚨 ТРЕВОГА АКТИВИРОВАНА!');
+  }
+
+  // ДЕАКТИВАЦИЯ ТРЕВОГИ
+  static void deactivateAlarm() {
+    isAlarmActive = false;
+    
+    // Выключаем все LED
+    for (var led in leds) {
+      led.isEnabled = false;
+      led.isBlinking = false;
+    }
+    
+    // Выключаем все баззеры
+    for (var buzzer in buzzers) {
+      buzzer.isEnabled = false;
+    }
+    
+    // Открываем дверь
+    servo.openDoor();
+    
+    print('✅ Тревога деактивирована');
+  }
+
   // Получить все устройства
   static List<Device> getAllDevices() {
     return [
       ...sensors,
-      camera,
+      servo,
       ...leds,
       ...buzzers,
     ];
   }
 
-  // Получить статистику устройств
+  // Статистика
   static Map<String, int> getDeviceStats() {
     int totalDevices = getAllDevices().length;
     int onlineDevices = getAllDevices().where((d) => d.status == DeviceStatus.online).length;
@@ -229,30 +318,23 @@ class DeviceService {
     };
   }
 
-  // Emergency Stop - выключить все кроме камеры
+  // Emergency Stop - выключить все
   static void emergencyStop() {
+    deactivateAlarm();
+    
     for (var sensor in sensors) {
       sensor.isEnabled = false;
     }
-    for (var led in leds) {
-      led.isEnabled = false;
-    }
-    for (var buzzer in buzzers) {
-      buzzer.isEnabled = false;
-    }
-    // Камера остается включенной
+    
+    print('🛑 Emergency Stop активирован');
   }
 
-  // Включить все устройства
+  // Включить все
   static void enableAll() {
     for (var sensor in sensors) {
       sensor.isEnabled = true;
     }
-    for (var led in leds) {
-      led.isEnabled = true;
-    }
-    for (var buzzer in buzzers) {
-      buzzer.isEnabled = true;
-    }
+    
+    print('✅ Все устройства включены');
   }
 }

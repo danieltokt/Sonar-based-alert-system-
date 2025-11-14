@@ -7,7 +7,8 @@ import 'models/device_model.dart';
 import 'models/permission_log.dart';
 import 'services/connection_service.dart';
 import 'widgets/sensor_card.dart';
-import 'widgets/camera_widget.dart';
+import 'widgets/servo_widget.dart';
+import 'widgets/alarm_panel.dart';
 import 'widgets/led_control.dart';
 import 'widgets/buzzer_control.dart';
 import 'widgets/connection_status.dart';
@@ -38,7 +39,8 @@ class SplashScreen extends StatefulWidget {
   _SplashScreenState createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
@@ -50,9 +52,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       duration: Duration(seconds: 2),
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
-    
+
     _controller.forward();
-    
+
     Timer(Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
@@ -113,13 +115,14 @@ class LoginScreen extends StatefulWidget {
   _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _errorMessage = '';
   bool _isLoading = false;
   late AnimationController _shakeController;
-  
+
   // Для секретного входа админа
   int _logoTapCount = 0;
   Timer? _resetTimer;
@@ -160,17 +163,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
     });
 
-    // Показываем подсказку при 3 нажатиях
-    if (_logoTapCount == 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('🤫 Еще 2 нажатия...', textAlign: TextAlign.center),
-          duration: Duration(seconds: 1),
-          backgroundColor: Colors.blue.withOpacity(0.7),
-        ),
-      );
-    }
-
     // Вход в админку при 5 нажатиях
     if (_logoTapCount >= 5) {
       _openAdminLogin();
@@ -178,11 +170,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   void _openAdminLogin() {
-    showDialog(
-      context: context,
-      builder: (context) => AdminLoginDialog(),
-    );
-    
+    showDialog(context: context, builder: (context) => AdminLoginDialog());
+
     // Сброс счетчика
     setState(() {
       _logoTapCount = 0;
@@ -217,7 +206,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => DashboardScreen(user: user),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              DashboardScreen(user: user),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -249,7 +239,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             child: AnimatedBuilder(
               animation: _shakeController,
               builder: (context, child) {
-                final offset = 10 * _shakeController.value * (1 - _shakeController.value);
+                final offset =
+                    10 * _shakeController.value * (1 - _shakeController.value);
                 return Transform.translate(
                   offset: Offset(offset, 0),
                   child: child,
@@ -306,12 +297,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     ),
                   ),
                   SizedBox(height: 50),
-                  
+
                   TextField(
                     controller: _usernameController,
                     decoration: InputDecoration(
                       labelText: 'Username',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       prefixIcon: Icon(Icons.person),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.1),
@@ -319,13 +312,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     style: TextStyle(color: Colors.white),
                   ),
                   SizedBox(height: 20),
-                  
+
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       prefixIcon: Icon(Icons.lock),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.1),
@@ -334,7 +329,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     onSubmitted: (_) => _login(),
                   ),
                   SizedBox(height: 10),
-                  
+
                   if (_errorMessage.isNotEmpty)
                     Container(
                       padding: EdgeInsets.all(10),
@@ -344,7 +339,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: Colors.red[300], size: 20),
+                          Icon(
+                            Icons.error_outline,
+                            color: Colors.red[300],
+                            size: 20,
+                          ),
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -356,7 +355,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                     ),
                   SizedBox(height: 20),
-                  
+
                   ElevatedButton(
                     onPressed: _isLoading ? null : _login,
                     child: _isLoading
@@ -365,26 +364,36 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : Text(
                             'ВОЙТИ',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                     style: ElevatedButton.styleFrom(
-                      padding: EdgeInsets.symmetric(horizontal: 60, vertical: 18),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 60,
+                        vertical: 18,
+                      ),
                       backgroundColor: Colors.blue[600],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
                     ),
                   ),
-                  
+
                   // Подсказка (скрытая)
                   SizedBox(height: 40),
                   Opacity(
                     opacity: 0.3,
                     child: Text(
-                      '💡 Подсказка: нажмите на логотип',
+                      '',
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.white,
@@ -426,16 +435,18 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
     // Проверяем пароль админа
     if (password == 'admin123') {
       UserModel? admin = AuthService.login('admin', 'admin123');
-      
+
       if (admin != null) {
         Navigator.pop(context); // Закрываем диалог
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => AdminScreen(),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                AdminScreen(),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
           ),
         );
       }
@@ -487,10 +498,7 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
                       ),
                       Text(
                         'Введите пароль администратора',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[400],
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
                       ),
                     ],
                   ),
@@ -506,7 +514,9 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
               autofocus: true,
               decoration: InputDecoration(
                 labelText: 'Admin Password',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 prefixIcon: Icon(Icons.lock, color: Colors.red),
                 filled: true,
                 fillColor: Colors.grey[850],
@@ -514,7 +524,7 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
               style: TextStyle(color: Colors.white),
               onSubmitted: (_) => _adminLogin(),
             ),
-            
+
             // Ошибка
             if (_errorMessage.isNotEmpty) ...[
               SizedBox(height: 12),
@@ -538,7 +548,7 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
                 ),
               ),
             ],
-            
+
             SizedBox(height: 24),
 
             // Кнопки
@@ -563,7 +573,9 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : Text('ВОЙТИ'),
@@ -658,7 +670,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 20),
-                  Text('Подключение к Arduino...', style: TextStyle(fontSize: 16)),
+                  Text(
+                    'Подключение к Arduino...',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ],
               ),
             )
@@ -692,12 +707,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       }).toList(),
                     ],
 
-                    if (widget.user.hasPermission('camera')) ...[
-                      _buildSectionTitle('📹 Камера'),
+                    if (widget.user.hasPermission('servo')) ...[
+                      _buildSectionTitle('🚪 Управление дверью'),
                       SizedBox(height: 12),
-                      CameraWidget(
-                        camera: DeviceService.camera,
-                        onRecordingToggle: (isRecording) => setState(() {}),
+                      ServoWidget(
+                        servo: DeviceService.servo,
+                        onAngleChange: (angle) => setState(() {}),
+                        onDoorToggle: (closed) => setState(() {}),
                       ),
                       SizedBox(height: 20),
                     ],
@@ -732,17 +748,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+      style: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
     );
   }
 
   Widget _buildDeviceStats() {
     var stats = DeviceService.getDeviceStats();
-    
+
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.blue[900]!, Colors.blue[700]!]),
+        gradient: LinearGradient(
+          colors: [Colors.blue[900]!, Colors.blue[700]!],
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -761,7 +783,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Icon(icon, color: Colors.white, size: 28),
         SizedBox(height: 8),
-        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         Text(label, style: TextStyle(fontSize: 12, color: Colors.white70)),
       ],
     );
@@ -774,7 +803,8 @@ class AdminScreen extends StatefulWidget {
   _AdminScreenState createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
+class _AdminScreenState extends State<AdminScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<UserModel> users = AuthService.getAllUsers();
 
@@ -810,7 +840,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Text('Emergency Stop'),
           ],
         ),
-        content: Text('Вы уверены? Это отключит все устройства кроме камеры!\n\nКамера продолжит работать для безопасности.'),
+        content: Text(
+          'Вы уверены? Это отключит все устройства кроме камеры!\n\nКамера продолжит работать для безопасности.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -850,17 +882,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Tab(icon: Icon(Icons.history), text: 'История'),
           ],
         ),
-        actions: [
-          IconButton(icon: Icon(Icons.logout), onPressed: _logout),
-        ],
+        actions: [IconButton(icon: Icon(Icons.logout), onPressed: _logout)],
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildOverviewTab(),
-          _buildUsersTab(),
-          _buildHistoryTab(),
-        ],
+        children: [_buildOverviewTab(), _buildUsersTab(), _buildHistoryTab()],
       ),
     );
   }
@@ -876,14 +902,23 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           Container(
             padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [Colors.red[900]!, Colors.red[700]!]),
+              gradient: LinearGradient(
+                colors: [Colors.red[900]!, Colors.red[700]!],
+              ),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               children: [
                 Icon(Icons.warning_amber, size: 60, color: Colors.white),
                 SizedBox(height: 12),
-                Text('Emergency Controls', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(
+                  'Emergency Controls',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
                 SizedBox(height: 16),
                 Row(
                   children: [
@@ -892,7 +927,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         onPressed: _emergencyStop,
                         icon: Icon(Icons.power_settings_new),
                         label: Text('STOP'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: EdgeInsets.symmetric(vertical: 16)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                        ),
                       ),
                     ),
                     SizedBox(width: 12),
@@ -904,7 +942,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         },
                         icon: Icon(Icons.power),
                         label: Text('ENABLE'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 16)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                        ),
                       ),
                     ),
                   ],
@@ -920,10 +961,30 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             children: [
-              _buildStatCard('Всего', '${stats['total']}', Icons.devices, Colors.blue),
-              _buildStatCard('Онлайн', '${stats['online']}', Icons.wifi, Colors.green),
-              _buildStatCard('Активных', '${stats['enabled']}', Icons.power, Colors.orange),
-              _buildStatCard('Изменений', '$todayChanges', Icons.edit, Colors.purple),
+              _buildStatCard(
+                'Всего',
+                '${stats['total']}',
+                Icons.devices,
+                Colors.blue,
+              ),
+              _buildStatCard(
+                'Онлайн',
+                '${stats['online']}',
+                Icons.wifi,
+                Colors.green,
+              ),
+              _buildStatCard(
+                'Активных',
+                '${stats['enabled']}',
+                Icons.power,
+                Colors.orange,
+              ),
+              _buildStatCard(
+                'Изменений',
+                '$todayChanges',
+                Icons.edit,
+                Colors.purple,
+              ),
             ],
           ),
         ],
@@ -931,7 +992,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -944,7 +1010,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         children: [
           Icon(icon, color: color, size: 36),
           SizedBox(height: 12),
-          Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
           Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[400])),
         ],
       ),
@@ -967,9 +1040,15 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           children: [
             Row(
               children: [
-                CircleAvatar(child: Text(user.username[0].toUpperCase()), backgroundColor: Colors.blue),
+                CircleAvatar(
+                  child: Text(user.username[0].toUpperCase()),
+                  backgroundColor: Colors.blue,
+                ),
                 SizedBox(width: 12),
-                Text(user.username, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(
+                  user.username,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             Divider(),
@@ -982,11 +1061,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               },
             ),
             CheckboxListTile(
-              title: Text('📹 Камера'),
-              value: user.hasPermission('camera'),
+              title: Text('🚪 Серво (Дверь)'),
+              value: user.hasPermission('servo'),
               onChanged: (v) {
-                setState(() => user.updatePermission('camera', v!));
-                PermissionLogService.addLog(user.username, 'camera', v!);
+                setState(() => user.updatePermission('servo', v!));
+                PermissionLogService.addLog(user.username, 'servo', v!);
               },
             ),
             CheckboxListTile(
@@ -1022,10 +1101,16 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               var log = logs[i];
               return Card(
                 child: ListTile(
-                  leading: Icon(log.granted ? Icons.check : Icons.close, color: log.granted ? Colors.green : Colors.red),
+                  leading: Icon(
+                    log.granted ? Icons.check : Icons.close,
+                    color: log.granted ? Colors.green : Colors.red,
+                  ),
                   title: Text('${log.username} - ${log.getDeviceName()}'),
                   subtitle: Text('Доступ ${log.getActionText()}'),
-                  trailing: Text(log.getFormattedTime(), style: TextStyle(fontSize: 11)),
+                  trailing: Text(
+                    log.getFormattedTime(),
+                    style: TextStyle(fontSize: 11),
+                  ),
                 ),
               );
             },

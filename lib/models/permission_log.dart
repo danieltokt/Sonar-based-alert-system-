@@ -21,8 +21,8 @@ class PermissionLog {
     switch (permission) {
       case 'sensors':
         return '📡 Сенсоры';
-      case 'camera':
-        return '📹 Камера';
+      case 'servo': // Было 'camera'
+        return '🚪 Серво';
       case 'leds':
         return '💡 LED';
       case 'buzzers':

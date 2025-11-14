@@ -1,9 +1,10 @@
-// lib/services/connection_service.dart
+// lib/services/connection_service.dart - С BLUETOOTH
 
 import 'dart:async';
-import 'dart:math';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 
-// ==================== СТАТУС ПОДКЛЮЧЕНИЯ ====================
 enum ConnectionStatus {
   connected,
   connecting,
@@ -11,63 +12,177 @@ enum ConnectionStatus {
   error,
 }
 
-// ==================== СЕРВИС ПОДКЛЮЧЕНИЯ ====================
 class ConnectionService {
   static ConnectionStatus _status = ConnectionStatus.disconnected;
   static String _lastError = '';
   static DateTime? _connectedAt;
-  static final Random _random = Random();
 
-  // Stream для отслеживания статуса подключения
+  // Bluetooth
+  static BluetoothConnection? _connection;
+  static BluetoothDevice? _device;
+  static final String HC06_NAME = "HC-06"; // Имя вашего HC-06
+
+  // Stream
   static final StreamController<ConnectionStatus> _statusController =
       StreamController<ConnectionStatus>.broadcast();
+  static final StreamController<String> _dataController =
+      StreamController<String>.broadcast();
 
   static Stream<ConnectionStatus> get statusStream => _statusController.stream;
+  static Stream<String> get dataStream => _dataController.stream;
   static ConnectionStatus get status => _status;
   static String get lastError => _lastError;
   static DateTime? get connectedAt => _connectedAt;
 
-  // Получить время подключения в формате строки
-  static String getConnectionDuration() {
-    if (_connectedAt == null) return '0:00';
-    
-    Duration duration = DateTime.now().difference(_connectedAt!);
-    int minutes = duration.inMinutes;
-    int seconds = duration.inSeconds % 60;
-    
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  // ==================== ПОДКЛЮЧЕНИЕ К ARDUINO ====================
+  // ==================== ПОДКЛЮЧЕНИЕ ====================
   static Future<bool> connect() async {
     _updateStatus(ConnectionStatus.connecting);
     _lastError = '';
 
-    // Имитация задержки подключения (реалистичная задержка сети)
-    await Future.delayed(Duration(seconds: 2));
+    try {
+      // Получаем список сопряженных устройств
+      List<BluetoothDevice> devices = await FlutterBluetoothSerial.instance.getBondedDevices();
+      
+      // Ищем HC-06
+      _device = devices.firstWhere(
+        (device) => device.name == HC06_NAME,
+        orElse: () => throw Exception('HC-06 не найден в списке сопряженных устройств'),
+      );
 
-    // Имитация случайного успеха/неудачи (95% успех)
-    bool success = _random.nextInt(100) < 95;
+      print('Найден: ${_device!.name} (${_device!.address})');
 
-    if (success) {
+      // Подключаемся
+      _connection = await BluetoothConnection.toAddress(_device!.address);
+      print('Подключено к ${_device!.name}');
+
       _updateStatus(ConnectionStatus.connected);
       _connectedAt = DateTime.now();
-      print('✅ Connected to Arduino successfully');
+
+      // Слушаем данные от Arduino
+      _connection!.input!.listen(
+        _onDataReceived,
+        onDone: () {
+          print('Bluetooth отключен');
+          _updateStatus(ConnectionStatus.disconnected);
+          _connection = null;
+        },
+        onError: (error) {
+          print('Bluetooth ошибка: $error');
+          _lastError = error.toString();
+          _updateStatus(ConnectionStatus.error);
+        },
+      );
+
+      // Запрашиваем статус
+      await sendCommand('STATUS', '', '');
+
       return true;
-    } else {
+    } catch (e) {
+      print('Ошибка подключения: $e');
+      _lastError = e.toString();
       _updateStatus(ConnectionStatus.error);
-      _lastError = 'Connection timeout. Check Arduino device.';
-      print('❌ Failed to connect to Arduino');
+      return false;
+    }
+  }
+
+  // ==================== ПОЛУЧЕНИЕ ДАННЫХ ====================
+  static void _onDataReceived(Uint8List data) {
+    String message = utf8.decode(data).trim();
+    print('◀ Получено: $message');
+
+    _dataController.add(message);
+
+    // Обработка статуса
+    // Формат: STATUS:distance,led,buzzer,servo,alarm,sensor
+    if (message.startsWith('STATUS:')) {
+      String values = message.substring(7);
+      List<String> parts = values.split(',');
+      
+      if (parts.length >= 6) {
+        // Можно обновить DeviceService здесь
+        print('Distance: ${parts[0]}cm');
+        print('LED: ${parts[1]}');
+        print('Buzzer: ${parts[2]}');
+        print('Servo: ${parts[3]}°');
+        print('Alarm: ${parts[4]}');
+        print('Sensor: ${parts[5]}');
+      }
+    }
+  }
+
+  // ==================== ОТПРАВКА КОМАНДЫ ====================
+  static Future<bool> sendCommand(String deviceId, String command, dynamic value) async {
+    if (_status != ConnectionStatus.connected || _connection == null) {
+      print('❌ Не подключено к Arduino');
+      return false;
+    }
+
+    try {
+      String cmd = '';
+
+      // Формируем команду в зависимости от устройства
+      switch (deviceId) {
+        case 'led1':
+        case 'led2':
+        case 'led3':
+        case 'led4':
+          cmd = value == true ? 'LED:ON' : 'LED:OFF';
+          break;
+
+        case 'buzz1':
+        case 'buzz2':
+        case 'buzz3':
+          cmd = value == true ? 'BUZZER:ON' : 'BUZZER:OFF';
+          break;
+
+        case 'servo1':
+          if (command == 'open') {
+            cmd = 'SERVO:OPEN';
+          } else if (command == 'close') {
+            cmd = 'SERVO:CLOSE';
+          } else if (command == 'setAngle') {
+            cmd = 'SERVO:ANGLE:$value';
+          }
+          break;
+
+        case 's0':
+        case 's1':
+        case 's2':
+          cmd = value == true ? 'SENSOR:ON' : 'SENSOR:OFF';
+          break;
+
+        case 'alarm':
+          cmd = value == true ? 'ALARM:ON' : 'ALARM:OFF';
+          break;
+
+        default:
+          cmd = '$deviceId:$command:$value';
+      }
+
+      if (cmd.isNotEmpty) {
+        print('▶ Отправка: $cmd');
+        _connection!.output.add(Uint8List.fromList(utf8.encode('$cmd\n')));
+        await _connection!.output.allSent;
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print('❌ Ошибка отправки: $e');
+      _lastError = e.toString();
       return false;
     }
   }
 
   // ==================== ОТКЛЮЧЕНИЕ ====================
   static Future<void> disconnect() async {
+    if (_connection != null) {
+      await _connection!.finish();
+      _connection = null;
+    }
     _updateStatus(ConnectionStatus.disconnected);
     _connectedAt = null;
-    await Future.delayed(Duration(milliseconds: 500));
-    print('🔌 Disconnected from Arduino');
+    print('🔌 Отключено от Arduino');
   }
 
   // ==================== ПЕРЕПОДКЛЮЧЕНИЕ ====================
@@ -77,87 +192,27 @@ class ConnectionService {
     return await connect();
   }
 
-  // ==================== ОТПРАВКА КОМАНДЫ НА ARDUINO ====================
-  static Future<bool> sendCommand(String deviceId, String command, dynamic value) async {
-    if (_status != ConnectionStatus.connected) {
-      print('❌ Cannot send command: not connected');
-      return false;
-    }
-
-    // Имитация задержки отправки команды
-    await Future.delayed(Duration(milliseconds: 100 + _random.nextInt(200)));
-
-    // Имитация случайной ошибки (2% шанс)
-    bool success = _random.nextInt(100) > 2;
-
-    if (success) {
-      print('📤 Command sent: $deviceId -> $command = $value');
-      return true;
-    } else {
-      print('❌ Failed to send command');
-      _lastError = 'Command failed. Network error.';
-      return false;
-    }
-  }
-
-  // ==================== ПОЛУЧЕНИЕ ДАННЫХ С ARDUINO ====================
-  static Future<Map<String, dynamic>?> getData() async {
-    if (_status != ConnectionStatus.connected) {
-      return null;
-    }
-
-    // Имитация задержки получения данных
-    await Future.delayed(Duration(milliseconds: 50));
-
-    // Возвращаем симулированные данные
-    return {
-      'sensors': {
-        's0': {'distance': 15.0 + _random.nextDouble() * 5, 'status': 'online'},
-        's1': {'distance': 20.0 + _random.nextDouble() * 5, 'status': 'online'},
-        's2': {'distance': 10.0 + _random.nextDouble() * 5, 'status': 'online'},
-      },
-      'camera': {'status': 'online', 'recording': false, 'angle': 90},
-      'leds': {
-        'led1': {'status': 'online', 'enabled': false},
-        'led2': {'status': 'online', 'enabled': false},
-        'led3': {'status': 'online', 'enabled': false},
-        'led4': {'status': 'online', 'enabled': false},
-      },
-      'buzzers': {
-        'buzz1': {'status': 'online', 'enabled': false},
-        'buzz2': {'status': 'online', 'enabled': false},
-        'buzz3': {'status': 'online', 'enabled': false},
-      },
-      'timestamp': DateTime.now().toIso8601String(),
-    };
-  }
-
-  // ==================== ПРОВЕРКА СВЯЗИ (PING) ====================
+  // ==================== PING ====================
   static Future<int> ping() async {
     if (_status != ConnectionStatus.connected) {
       return -1;
     }
 
     int startTime = DateTime.now().millisecondsSinceEpoch;
-    
-    // Имитация задержки пинга (20-100ms)
-    await Future.delayed(Duration(milliseconds: 20 + _random.nextInt(80)));
-    
+    await sendCommand('STATUS', '', '');
     int endTime = DateTime.now().millisecondsSinceEpoch;
-    int latency = endTime - startTime;
     
-    return latency;
+    return endTime - startTime;
   }
 
-  // ==================== АВТОМАТИЧЕСКОЕ ПЕРЕПОДКЛЮЧЕНИЕ ====================
-  static void startAutoReconnect() {
-    Timer.periodic(Duration(seconds: 10), (timer) async {
-      if (_status == ConnectionStatus.disconnected || 
-          _status == ConnectionStatus.error) {
-        print('🔄 Auto-reconnecting...');
-        await reconnect();
-      }
-    });
+  // ==================== ПОИСК HC-06 ====================
+  static Future<List<BluetoothDevice>> findDevices() async {
+    try {
+      return await FlutterBluetoothSerial.instance.getBondedDevices();
+    } catch (e) {
+      print('Ошибка поиска устройств: $e');
+      return [];
+    }
   }
 
   // ==================== ОБНОВЛЕНИЕ СТАТУСА ====================
@@ -166,7 +221,7 @@ class ConnectionService {
     _statusController.add(newStatus);
   }
 
-  // ==================== ПОЛУЧЕНИЕ СТАТУСА В ВИДЕ ТЕКСТА ====================
+  // ==================== ПОЛУЧЕНИЕ СТАТУСА ====================
   static String getStatusText() {
     switch (_status) {
       case ConnectionStatus.connected:
@@ -180,7 +235,6 @@ class ConnectionService {
     }
   }
 
-  // ==================== ПОЛУЧЕНИЕ ЦВЕТА СТАТУСА ====================
   static String getStatusColor() {
     switch (_status) {
       case ConnectionStatus.connected:
@@ -194,8 +248,19 @@ class ConnectionService {
     }
   }
 
-  // Закрыть stream при завершении приложения
+  static String getConnectionDuration() {
+    if (_connectedAt == null) return '0:00';
+    
+    Duration duration = DateTime.now().difference(_connectedAt!);
+    int minutes = duration.inMinutes;
+    int seconds = duration.inSeconds % 60;
+    
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   static void dispose() {
     _statusController.close();
+    _dataController.close();
+    disconnect();
   }
 }

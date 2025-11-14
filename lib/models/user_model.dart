@@ -24,12 +24,7 @@ class UserModel {
   }
 }
 
-enum UserRole {
-  userA,
-  userB,
-  userC,
-  admin,
-}
+enum UserRole { userA, userB, userC, admin }
 
 // Класс для управления пользователями и аутентификацией
 class AuthService {
@@ -41,7 +36,7 @@ class AuthService {
       role: UserRole.userA,
       permissions: {
         'sensors': true,
-        'camera': true,
+        'servo': true, // Было 'camera'
         'leds': true,
         'buzzers': true,
       },
@@ -52,7 +47,7 @@ class AuthService {
       role: UserRole.userB,
       permissions: {
         'sensors': true,
-        'camera': false,
+        'servo': false, // Было 'camera'
         'leds': false,
         'buzzers': false,
       },
@@ -63,7 +58,7 @@ class AuthService {
       role: UserRole.userC,
       permissions: {
         'sensors': false,
-        'camera': true,
+        'servo': true, // Было 'camera'
         'leds': false,
         'buzzers': true,
       },
@@ -74,7 +69,7 @@ class AuthService {
       role: UserRole.admin,
       permissions: {
         'sensors': true,
-        'camera': true,
+        'servo': true, // Было 'camera'
         'leds': true,
         'buzzers': true,
       },
