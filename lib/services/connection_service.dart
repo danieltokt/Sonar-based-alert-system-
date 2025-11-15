@@ -1,9 +1,10 @@
-// lib/services/connection_service.dart - С BLUETOOTH
+// lib/services/connection_service.dart - ОБНОВЛЕННЫЙ С ИНТЕГРАЦИЕЙ DEVICE_MODEL
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import '../models/device_model.dart';
 
 enum ConnectionStatus {
   connected,
@@ -20,7 +21,7 @@ class ConnectionService {
   // Bluetooth
   static BluetoothConnection? _connection;
   static BluetoothDevice? _device;
-  static final String HC06_NAME = "HC-06"; // Имя вашего HC-06
+  static final String HC06_NAME = "HC-06";
 
   // Stream
   static final StreamController<ConnectionStatus> _statusController =
@@ -40,20 +41,31 @@ class ConnectionService {
     _lastError = '';
 
     try {
+      // Включаем Bluetooth если выключен
+      bool? isEnabled = await FlutterBluetoothSerial.instance.isEnabled;
+      if (isEnabled == false) {
+        await FlutterBluetoothSerial.instance.requestEnable();
+      }
+
       // Получаем список сопряженных устройств
       List<BluetoothDevice> devices = await FlutterBluetoothSerial.instance.getBondedDevices();
       
+      print('Найдено устройств: ${devices.length}');
+      for (var d in devices) {
+        print('- ${d.name} (${d.address})');
+      }
+
       // Ищем HC-06
       _device = devices.firstWhere(
         (device) => device.name == HC06_NAME,
-        orElse: () => throw Exception('HC-06 не найден в списке сопряженных устройств'),
+        orElse: () => throw Exception('HC-06 не найден. Убедитесь что он сопряжен!'),
       );
 
-      print('Найден: ${_device!.name} (${_device!.address})');
+      print('✓ Найден: ${_device!.name} (${_device!.address})');
 
       // Подключаемся
       _connection = await BluetoothConnection.toAddress(_device!.address);
-      print('Подключено к ${_device!.name}');
+      print('✓ Подключено к ${_device!.name}');
 
       _updateStatus(ConnectionStatus.connected);
       _connectedAt = DateTime.now();
@@ -73,12 +85,13 @@ class ConnectionService {
         },
       );
 
-      // Запрашиваем статус
+      // Ждем немного и запрашиваем статус
+      await Future.delayed(Duration(milliseconds: 500));
       await sendCommand('STATUS', '', '');
 
       return true;
     } catch (e) {
-      print('Ошибка подключения: $e');
+      print('❌ Ошибка подключения: $e');
       _lastError = e.toString();
       _updateStatus(ConnectionStatus.error);
       return false;
@@ -88,25 +101,66 @@ class ConnectionService {
   // ==================== ПОЛУЧЕНИЕ ДАННЫХ ====================
   static void _onDataReceived(Uint8List data) {
     String message = utf8.decode(data).trim();
+    if (message.isEmpty) return;
+    
     print('◀ Получено: $message');
-
     _dataController.add(message);
 
-    // Обработка статуса
-    // Формат: STATUS:distance,led,buzzer,servo,alarm,sensor
+    // Парсим STATUS
+    // Формат: STATUS:d0,d1,d2,led,buzzer,servo,alarm,sensor
     if (message.startsWith('STATUS:')) {
-      String values = message.substring(7);
-      List<String> parts = values.split(',');
-      
-      if (parts.length >= 6) {
-        // Можно обновить DeviceService здесь
-        print('Distance: ${parts[0]}cm');
-        print('LED: ${parts[1]}');
-        print('Buzzer: ${parts[2]}');
-        print('Servo: ${parts[3]}°');
-        print('Alarm: ${parts[4]}');
-        print('Sensor: ${parts[5]}');
+      try {
+        String values = message.substring(7);
+        List<String> parts = values.split(',');
+        
+        if (parts.length >= 8) {
+          // Обновляем сенсоры
+          if (parts[0] != '999') DeviceService.sensors[0].distance = double.parse(parts[0]);
+          if (parts[1] != '999') DeviceService.sensors[1].distance = double.parse(parts[1]);
+          if (parts[2] != '999') DeviceService.sensors[2].distance = double.parse(parts[2]);
+          
+          // LED
+          bool ledOn = parts[3] == '1';
+          for (var led in DeviceService.leds) {
+            led.isEnabled = ledOn;
+          }
+          
+          // Buzzer
+          bool buzzerOn = parts[4] == '1';
+          for (var buzzer in DeviceService.buzzers) {
+            buzzer.isEnabled = buzzerOn;
+          }
+          
+          // Servo
+          int servoAngle = int.parse(parts[5]);
+          DeviceService.servo.angle = servoAngle;
+          DeviceService.servo.isDoorClosed = (servoAngle == 90);
+          
+          // Alarm
+          DeviceService.isAlarmActive = parts[6] == '1';
+          
+          // Sensor armed
+          bool sensorArmed = parts[7] == '1';
+          for (var sensor in DeviceService.sensors) {
+            sensor.isEnabled = sensorArmed;
+          }
+          
+          print('✓ Статус обновлен');
+        }
+      } catch (e) {
+        print('Ошибка парсинга STATUS: $e');
       }
+    }
+    
+    // Обработка других сообщений
+    else if (message.startsWith('MOTION:')) {
+      print('🚨 Движение обнаружено!');
+    } else if (message.contains('ALARM:ACTIVATED')) {
+      DeviceService.isAlarmActive = true;
+      print('🚨 ТРЕВОГА АКТИВИРОВАНА');
+    } else if (message.contains('ALARM:DEACTIVATED')) {
+      DeviceService.isAlarmActive = false;
+      print('✓ Тревога деактивирована');
     }
   }
 
@@ -120,49 +174,41 @@ class ConnectionService {
     try {
       String cmd = '';
 
-      // Формируем команду в зависимости от устройства
-      switch (deviceId) {
-        case 'led1':
-        case 'led2':
-        case 'led3':
-        case 'led4':
-          cmd = value == true ? 'LED:ON' : 'LED:OFF';
-          break;
-
-        case 'buzz1':
-        case 'buzz2':
-        case 'buzz3':
-          cmd = value == true ? 'BUZZER:ON' : 'BUZZER:OFF';
-          break;
-
-        case 'servo1':
-          if (command == 'open') {
-            cmd = 'SERVO:OPEN';
-          } else if (command == 'close') {
-            cmd = 'SERVO:CLOSE';
-          } else if (command == 'setAngle') {
-            cmd = 'SERVO:ANGLE:$value';
-          }
-          break;
-
-        case 's0':
-        case 's1':
-        case 's2':
-          cmd = value == true ? 'SENSOR:ON' : 'SENSOR:OFF';
-          break;
-
-        case 'alarm':
-          cmd = value == true ? 'ALARM:ON' : 'ALARM:OFF';
-          break;
-
-        default:
-          cmd = '$deviceId:$command:$value';
+      // Формируем команду
+      if (deviceId == 'led1') {
+        cmd = 'LED1:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId == 'led2') {
+        cmd = 'LED2:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId == 'led3') {
+        cmd = 'LED3:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId == 'led4') {
+        cmd = 'LED4:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId.startsWith('buzz')) {
+        cmd = '${deviceId.toUpperCase()}:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId == 'servo1') {
+        if (command == 'open') {
+          cmd = 'SERVO:OPEN';
+        } else if (command == 'close') {
+          cmd = 'SERVO:CLOSE';
+        } else if (command == 'setAngle') {
+          cmd = 'SERVO:ANGLE:$value';
+        }
+      } else if (deviceId.startsWith('s')) {
+        // Sensor
+        cmd = 'SENSOR:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId == 'alarm') {
+        cmd = 'ALARM:${value == true ? "ON" : "OFF"}';
+      } else if (deviceId == 'STATUS') {
+        cmd = 'STATUS';
       }
 
       if (cmd.isNotEmpty) {
         print('▶ Отправка: $cmd');
         _connection!.output.add(Uint8List.fromList(utf8.encode('$cmd\n')));
         await _connection!.output.allSent;
+        
+        // Ждем ответ
+        await Future.delayed(Duration(milliseconds: 100));
         return true;
       }
 
@@ -205,7 +251,7 @@ class ConnectionService {
     return endTime - startTime;
   }
 
-  // ==================== ПОИСК HC-06 ====================
+  // ==================== ПОИСК УСТРОЙСТВ ====================
   static Future<List<BluetoothDevice>> findDevices() async {
     try {
       return await FlutterBluetoothSerial.instance.getBondedDevices();
@@ -221,30 +267,17 @@ class ConnectionService {
     _statusController.add(newStatus);
   }
 
-  // ==================== ПОЛУЧЕНИЕ СТАТУСА ====================
+  // ==================== СТАТУС В СТРОКУ ====================
   static String getStatusText() {
     switch (_status) {
       case ConnectionStatus.connected:
-        return 'Connected';
+        return 'Подключено';
       case ConnectionStatus.connecting:
-        return 'Connecting...';
+        return 'Подключение...';
       case ConnectionStatus.disconnected:
-        return 'Disconnected';
+        return 'Отключено';
       case ConnectionStatus.error:
-        return 'Error';
-    }
-  }
-
-  static String getStatusColor() {
-    switch (_status) {
-      case ConnectionStatus.connected:
-        return 'green';
-      case ConnectionStatus.connecting:
-        return 'orange';
-      case ConnectionStatus.disconnected:
-        return 'grey';
-      case ConnectionStatus.error:
-        return 'red';
+        return 'Ошибка';
     }
   }
 
